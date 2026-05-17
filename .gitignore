@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Output directories
+output/
+test_p3/
+test_show/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/

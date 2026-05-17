@@ -1,0 +1,25 @@
+target_groups:
+  - Target
+modern_background: true
+modern_groups:
+  - Han
+  - Austronesian
+  - Austroasiatic
+  - Hmong-Mien
+  - Japanese-Korean
+  - Mongolian
+  - Tai-Kadai
+  - Tibetan-Burman
+modern_background_color: "#6699CC"
+modern_background_alpha: 0.55
+modern_background_size_multiplier: 3.0
+modern_background_show_legend: false
+color_by: group
+label_targets: true
+target_shape: star
+target_color: "#FFD400"
+target_size_multiplier: 1.8
+target_outline_color: "#FF0000"
+html_use_webgl_threshold: 2000
+point_size: 5.0
+target_label_fontsize: 12

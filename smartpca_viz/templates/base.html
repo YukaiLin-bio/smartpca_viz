@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>smartpca visualization</title>
+<style>
+{{ css_content }}
+</style>
+</head>
+<body>
+<main>
+<aside>
+<h1 id="title"></h1>
+<div class="row">
+<button id="focusTargets">Focus targets</button>
+<button id="resetView">Global view</button>
+<button id="toggleZoom">🔍 Zoom</button>
+<button id="toggleModern">Modern as background</button>
+<button id="toggleDensity">Density heatmap</button>
+</div>
+<div class="scaleControl" id="modernAlphaRow" style="display:none">
+  <label for="modernAlpha">Modern alpha</label>
+  <input id="modernAlpha" type="range" min="5" max="100" value="55">
+  <span id="modernAlphaValue">0.55</span>
+</div>
+<h2>Color by</h2>
+<select id="colorBy"><option value="group">group</option><option value="population">population</option></select>
+<h2>Layout</h2>
+<div class="scaleControl"><label for="legendScale">Legend size</label><input id="legendScale" type="range" min="60" max="160" value="100"><span id="legendScaleValue">100%</span></div>
+<div class="scaleControl"><label for="pointScale">Point size</label><input id="pointScale" type="range" min="40" max="240" value="100"><span id="pointScaleValue">100%</span></div>
+<div class="scaleControl"><label for="labelMode">Labels</label><select id="labelMode"><option value="none">none</option><option value="group">group</option><option value="sample_id">sample_id</option><option value="population">population</option></select><span></span></div>
+<button id="resetLegendLayout">Reset legend layout</button>
+<h2>Search sample_id</h2>
+<div class="row"><input id="searchBox" placeholder="sample_id" style="width:190px"><button id="searchBtn">Search</button></div>
+<div id="searchMsg" class="note"></div>
+<h2>Export</h2>
+<button id="previewLayout">Preview</button><button id="exportSvg">SVG</button><button id="exportPng">PNG</button><button id="exportPdf">PDF</button>
+<h2>Groups</h2><div id="groups" class="list"></div>
+<h2>Populations</h2><div id="populations" class="list"></div>
+<h2>Selected samples</h2>
+<button id="exportSelected">Export selected CSV</button>
+<pre id="selected"></pre>
+<p class="muted">Drag on the plot to box-select samples. Hover points for details. Each group legend block can be dragged independently.</p>
+</aside>
+<section>
+<svg id="plot" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="legend" class="legendLayer"></div>
+<div id="tooltip" class="tooltip"></div>
+<div id="statusBar" class="status-bar"></div>
+</section>
+</main>
+<script>
+const PAYLOAD = {{ payload_json }};
+{{ js_content }}
+</script>
+</body>
+</html>

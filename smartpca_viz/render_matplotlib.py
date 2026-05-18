@@ -185,6 +185,26 @@ _SCI_RCPARAMS = {
 }
 
 
+# ─── Star marker matching HTML ────────────────────────────────────
+import math
+
+STAR_PATH = None
+try:
+    from matplotlib.path import Path
+    # Build star vertices matching HTML: outer=1.35, inner=0.55
+    verts = []
+    codes = [Path.MOVETO]
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        r = 1.35 if i % 2 == 0 else 0.55
+        verts.append([math.cos(a) * r, math.sin(a) * r])
+        codes.append(Path.LINETO)
+    codes[-1] = Path.CLOSEPOLY
+    STAR_PATH = Path(verts, codes)
+except Exception:
+    pass
+
+
 # ─── Publication PDF ─────────────────────────────────────────────
 
 
@@ -361,9 +381,9 @@ def generate_publication_pdf_matplotlib(
             s=target_s,
             c=target_color,
             alpha=1.0,
-            marker="*",
+            marker=STAR_PATH if is_nature else "*",
             linewidths=0.9 if is_nature else 0.9,
-            edgecolors=target_outline,
+            edgecolors=target_outline if is_nature else "black",
             zorder=4,
         )
         if config.get("label_targets", True):

@@ -737,8 +737,8 @@
         group: 'Target',
         color: this.p.config.target_color || '#FFD400',
         target: true,
-        populations: targetRows.map(function (p) {
-          return { population: p.population, symbol: self.p.config.target_shape || 'star' };
+        populations: Array.from(new Set(targetRows.map(function (p) { return p.population; }))).map(function (pop) {
+          return { population: pop, symbol: self.p.config.target_shape || 'star' };
         })
       });
     }

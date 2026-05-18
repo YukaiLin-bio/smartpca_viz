@@ -34,7 +34,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Visualize smartpca .evec PC1/PC2 results.")
     parser.add_argument("--evec", required=True, type=Path, help="Path to smartpca .evec file")
-    parser.add_argument("--meta", required=True, type=Path, help="Path to metadata file (CSV or poplist)")
+    parser.add_argument("--meta", type=Path, help="Path to metadata file (CSV or poplist). If omitted and both --modern-poplist and --ancient-poplist are given, they are merged automatically.")
     parser.add_argument("--targets", type=Path, help="Path to targets CSV (sample_id,label)")
     parser.add_argument("--project", help="Project name for output filenames")
     parser.add_argument("--out", type=Path, default=Path("output"), help="Output directory")
@@ -83,6 +83,21 @@ def main(argv: list[str] | None = None) -> int:
     config, config_warnings = load_config(args.config, base_config)
     warnings.extend(config_warnings)
 
+    # Auto-set nature defaults if no config file provided
+    if args.config is None:
+        config["pdf_style"] = "nature"
+        config["pdf_nature_col_width"] = 3.5
+        config["pdf_nature_legend_width"] = 2.2
+        config["point_size"] = 4.5
+        config["target_color"] = "#D81B60"
+        config["target_outline_color"] = "#222222"
+        config["target_size_multiplier"] = 1.2
+        config["label_targets"] = False
+        config["modern_background_color"] = "#B0B8C4"
+        config["modern_background_alpha"] = 0.45
+        config["modern_background_size_multiplier"] = 2.5
+        info("No config file given; using publication-ready Nature defaults")
+
     # CLI overrides
     if args.modern_background:
         config["modern_background"] = True
@@ -118,9 +133,22 @@ def main(argv: list[str] | None = None) -> int:
             config["ancient_groups"] = ancient_groups
             info(f"Parsed {len(ancient_groups)} ancient groups from {args.ancient_poplist.name}")
 
-    if args.num_pc is not None and args.num_pc < 2:
-        print("ERROR: --num-pc must be >= 2", file=sys.stderr)
-        return 1
+    # Auto-merge modern + ancient poplists if no --meta given
+    meta_path = args.meta
+    if meta_path is None:
+        if args.modern_poplist and args.ancient_poplist:
+            import tempfile
+            modern_bytes = args.modern_poplist.read_bytes()
+            ancient_bytes = args.ancient_poplist.read_bytes()
+            merged = modern_bytes.rstrip(b"\n\r") + b"\n" + ancient_bytes
+            tmp = tempfile.NamedTemporaryFile(mode="wb", suffix=".poplist", delete=False)
+            tmp.write(merged)
+            tmp.close()
+            meta_path = Path(tmp.name)
+            warnings.add(f"[cli] Auto-merged modern+ancient poplists to {meta_path.name}")
+        else:
+            print("ERROR: --meta is required when neither --modern-poplist nor --ancient-poplist is given.", file=sys.stderr)
+            return 1
 
     # Validate config
     config_issues = validate_config(config)
@@ -138,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     warnings.extend(eval_warnings)
     eigvals = eval_eigvals or evec_eigvals
 
-    metadata, pop_order, group_order, meta_warnings = parse_metadata(args.meta, args.meta_format)
+    metadata, pop_order, group_order, meta_warnings = parse_metadata(meta_path, args.meta_format)
     warnings.extend(meta_warnings)
     info("Read metadata")
 
@@ -189,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
 
     input_paths = {
         "evec": args.evec,
-        "meta": args.meta,
+        "meta": meta_path,
         "targets": args.targets,
         "eval": args.eval_path,
         "config": args.config,

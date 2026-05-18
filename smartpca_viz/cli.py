@@ -33,13 +33,13 @@ def info(message: str) -> None:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Visualize smartpca .evec PC1/PC2 results.")
-    parser.add_argument("--evec", required=True, type=Path, help="Path to smartpca .evec file")
+    parser.add_argument("--evec", type=Path, default=Path("smartpca.evec"), help="Path to smartpca .evec file (default: smartpca.evec in current dir)")
     parser.add_argument("--meta", type=Path, help="Path to metadata file (CSV or poplist). If omitted and both --modern-poplist and --ancient-poplist are given, they are merged automatically.")
     parser.add_argument("--targets", type=Path, help="Path to targets CSV (sample_id,label)")
     parser.add_argument("--project", help="Project name for output filenames")
     parser.add_argument("--out", type=Path, default=Path("output"), help="Output directory")
     parser.add_argument("--config", type=Path, help="Path to YAML config file")
-    parser.add_argument("--eval", type=Path, dest="eval_path", help="Path to .eval file (eigenvalues)")
+    parser.add_argument("--eval", type=Path, dest="eval_path", default=Path("smartpca.eval"), help="Path to .eval file (eigenvalues); default: smartpca.eval in current dir")
     parser.add_argument(
         "--meta-format",
         choices=["auto", "csv", "poplist"],

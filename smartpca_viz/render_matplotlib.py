@@ -329,17 +329,22 @@ def generate_publication_pdf_matplotlib(
 
         # Modern group text labels (if enabled)
         if is_nature and config.get("modern_background_labels", False) and modern_rows:
+            # Reuse the same muted color as background points
+            muted_colors = {}
+            for mg in modern_groups_in_data:
+                mg_rows_g = [row for row in modern_rows if row["group"] == mg]
+                if mg_rows_g:
+                    gc = mg_rows_g[0].get("group_color", config.get("modern_background_color", "#B0B8C4"))
+                    muted_colors[mg] = _nature_modern_color(gc)
             for mg in modern_groups_in_data:
                 mg_rows = [row for row in modern_rows if row["group"] == mg]
                 if not mg_rows:
                     continue
-                mg_color = mg_rows[0].get("group_color", "#999999")
-                muted_text_color = _nature_modern_color(mg_color)
                 mean_pc1 = sum(float(r["PC1"]) for r in mg_rows) / len(mg_rows)
                 mean_pc2 = sum(float(r["PC2"]) for r in mg_rows) / len(mg_rows)
                 ax.text(
                     mean_pc1, mean_pc2, mg,
-                    fontsize=5.5, color=muted_text_color, alpha=0.8,
+                    fontsize=5.5, color=muted_colors.get(mg, "#999999"), alpha=0.75,
                     weight="normal", ha="center", va="center",
                     zorder=6,
                 )

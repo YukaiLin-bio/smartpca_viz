@@ -191,12 +191,13 @@ import math
 STAR_PATH = None
 try:
     from matplotlib.path import Path
-    # Build star vertices matching HTML: outer=1.0, inner=0.407 (0.55/1.35)
+    # Build star vertices matching HTML starPoints() exactly
+    # HTML 16x16 viewBox: outer r≈6.25, inner r≈2.85 → ratio 0.456
     verts = []
     codes = [Path.MOVETO]
     for i in range(10):
         a = -math.pi / 2 + i * math.pi / 5
-        r = 1.0 if i % 2 == 0 else 0.407
+        r = 1.0 if i % 2 == 0 else 0.456
         verts.append([math.cos(a) * r, math.sin(a) * r])
         codes.append(Path.LINETO)
     codes[-1] = Path.CLOSEPOLY
@@ -371,11 +372,9 @@ def generate_publication_pdf_matplotlib(
     if target_rows:
         target_color = config.get("target_color", "#D81B60")
         target_outline = config.get("target_outline_color", "black")
-        # Match HTML: radius = point_size * target_size_multiplier
-        # s = area of bounding box in points² = (2 * radius)²
-        target_r = float(config.get("point_size", 5.0)) * float(config.get("target_size_multiplier", 1.8))
-        target_s = (target_r * 2) ** 2
+        target_s = float(config.get("point_size", 5.0)) * 20.0 * float(config.get("target_size_multiplier", 1.8))
         if is_nature:
+            target_s *= 1.2  # More prominent in Nature style
             target_outline = "#222222"
         ax.scatter(
             [row["PC1"] for row in target_rows],
@@ -383,12 +382,12 @@ def generate_publication_pdf_matplotlib(
             s=target_s,
             c=target_color,
             alpha=1.0,
-            marker=STAR_PATH if is_nature else "*",
+            marker="*",
             linewidths=0.9 if is_nature else 0.9,
             edgecolors=target_outline if is_nature else "black",
             zorder=4,
         )
-        if config.get("label_targets", True) and not is_nature:
+        if config.get("label_targets", True):
             label_fontsize = int(config.get("target_label_fontsize", 8))
             for row in target_rows:
                 texts.append(

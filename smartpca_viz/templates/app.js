@@ -678,7 +678,7 @@
       var m = self._marker(p, x, y, r);
       self._bindTooltip(m, p);
       self.svg.appendChild(m);
-      if (self.state.showTargetLabels && self.p.config.label_targets) {
+      if (self.state.showTargetLabels) {
         var t = self._el('text', {
           x: x + 9, y: y - 9,
           'font-family': 'Arial,Helvetica,sans-serif',

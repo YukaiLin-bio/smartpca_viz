@@ -191,12 +191,12 @@ import math
 STAR_PATH = None
 try:
     from matplotlib.path import Path
-    # Build star vertices matching HTML: outer=1.35, inner=0.55
+    # Build star vertices matching HTML: outer=1.0, inner=0.407 (0.55/1.35)
     verts = []
     codes = [Path.MOVETO]
     for i in range(10):
         a = -math.pi / 2 + i * math.pi / 5
-        r = 1.35 if i % 2 == 0 else 0.55
+        r = 1.0 if i % 2 == 0 else 0.407
         verts.append([math.cos(a) * r, math.sin(a) * r])
         codes.append(Path.LINETO)
     codes[-1] = Path.CLOSEPOLY

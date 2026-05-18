@@ -32,7 +32,41 @@ def info(message: str) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Visualize smartpca .evec PC1/PC2 results.")
+    parser = argparse.ArgumentParser(
+        description="Visualize smartpca PCA results as publication-grade PDF and interactive HTML.",
+        epilog="""
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+EXAMPLES
+
+  # Minimal (auto-detects evec/eval in current dir):
+  cd /your/data/dir
+  python3 -m smartpca_viz --modern-poplist modern.poplist \\
+      --ancient-poplist ancient.poplist --project my_pca
+
+  # Full control:
+  python3 -m smartpca_viz --evec smartpca.evec --eval smartpca.eval \\
+      --modern-poplist modern.poplist --ancient-poplist ancient.poplist \\
+      --project my_pca --out output
+
+  # Modern as text labels:
+  echo 'modern_background_labels: true' > /tmp/nature.yaml
+  python3 -m smartpca_viz --modern-poplist modern.poplist \\
+      --ancient-poplist ancient.poplist --project my_pca \\
+      --config /tmp/nature.yaml
+
+OUTPUT
+  *_pca_plot.pdf          Publication-grade PCA figure (Nature style)
+  *_pca_interactive.html  Interactive SVG plot (zoom, hover, export)
+  *_pca_report.pdf        Report with sample/population statistics
+
+AUTO-DETECTION
+  --evec / --eval   Default to smartpca.evec / smartpca.eval in cwd
+  --meta            Auto-merged from modern+ancient poplists if omitted
+  --config          Publication-ready Nature defaults if omitted
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--evec", type=Path, default=Path("smartpca.evec"), help="Path to smartpca .evec file (default: smartpca.evec in current dir)")
     parser.add_argument("--meta", type=Path, help="Path to metadata file (CSV or poplist). If omitted and both --modern-poplist and --ancient-poplist are given, they are merged automatically.")
     parser.add_argument("--targets", type=Path, help="Path to targets CSV (sample_id,label)")

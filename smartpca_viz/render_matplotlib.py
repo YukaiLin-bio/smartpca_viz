@@ -1,4 +1,9 @@
-"""Matplotlib-based PDF rendering for PCA plots (fallback and high-quality)."""
+"""Matplotlib-based PDF rendering for PCA plots (fallback and high-quality).
+
+Supports two styles:
+- 'sci': standard scientific publication quality (existing)
+- 'nature': Nature-grade output with professional typography, layout, and colour
+"""
 
 from __future__ import annotations
 
@@ -37,19 +42,20 @@ except ImportError:
 
 # ─── KDE dependencies ────────────────────────────────────────────
 HAS_SCIPY = False
+HAS_NUMPY = False
 try:
     import numpy as np
 
     HAS_NUMPY = True
 except ImportError:
-    HAS_NUMPY = False
+    pass
 
 try:
     from scipy import stats
 
     HAS_SCIPY = True
 except ImportError:
-    HAS_SCIPY = False
+    pass
 
 MARKER_MAP = {
     "circle": "o",
@@ -130,6 +136,55 @@ def _add_kde_to_axes(ax: Any, rows: list[dict[str, Any]], config: dict[str, Any]
         )
 
 
+# ─── Nature-style color handling ─────────────────────────────────
+
+from smartpca_viz.palette import muted_color as palette_muted_color
+
+
+def _nature_modern_color(group_color: str) -> str:
+    """Very muted modern background color for Nature style."""
+    return palette_muted_color(group_color, strength=0.25)
+
+
+# ─── Style presets ───────────────────────────────────────────────
+
+_NATURE_RCPARAMS = {
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+    "pdf.fonttype": 42,  # Type 42 (TrueType) — ensures text is searchable
+    "ps.fonttype": 42,
+    "axes.linewidth": 0.5,        # Nature uses thin axes
+    "axes.labelsize": 9,
+    "axes.titlesize": 10,
+    "xtick.major.width": 0.4,
+    "ytick.major.width": 0.4,
+    "xtick.major.size": 3.0,
+    "ytick.major.size": 3.0,
+    "xtick.labelsize": 7.5,
+    "ytick.labelsize": 7.5,
+    "xtick.direction": "in",      # Nature uses inward ticks
+    "ytick.direction": "in",
+    "legend.fontsize": 6.5,
+    "legend.title_fontsize": 7.5,
+    "figure.dpi": 300,
+    "savefig.dpi": 600,
+}
+
+_SCI_RCPARAMS = {
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "Helvetica"],
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+    "axes.linewidth": 0.8,
+    "axes.labelsize": 10,
+    "xtick.direction": "out",
+    "ytick.direction": "out",
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "legend.fontsize": 7,
+}
+
+
 # ─── Publication PDF ─────────────────────────────────────────────
 
 
@@ -144,48 +199,75 @@ def generate_publication_pdf_matplotlib(
     project: str,
     png_path: Path | None = None,
 ) -> bool:
-    """Generate publication-quality PDF using matplotlib. Returns True if successful."""
+    """Generate publication-quality PDF using matplotlib. Returns True if successful.
+
+    Supports two styles via config['pdf_style']:
+    - 'sci' : standard scientific (default)
+    - 'nature' : Nature-grade output
+    """
     if not HAS_MATPLOTLIB:
         return False
 
-    plt.rcParams.update(
-        {
-            "font.family": "Arial",
-            "pdf.fonttype": 42,
-            "ps.fonttype": 42,
-            "axes.linewidth": 0.8,
-            "xtick.direction": "out",
-            "ytick.direction": "out",
-        }
-    )
+    style = str(config.get("pdf_style", "sci")).lower()
+    is_nature = style == "nature"
 
-    combine_legend = bool(config.get("pdf_combine_plot_and_legend", True))
-    if combine_legend:
-        fig = plt.figure(
-            figsize=(
-                float(config.get("pdf_combined_width_in", 12.0)),
-                float(config.get("pdf_combined_height_in", 14.2)),
-            ),
-            dpi=300,
-        )
-        grid = fig.add_gridspec(2, 1, height_ratios=[1.0, 1.28], hspace=0.16)
-        ax = fig.add_subplot(grid[0, 0])
-        legend_ax = fig.add_subplot(grid[1, 0])
+    # Apply style-specific rcParams
+    plt.rcParams.update(_NATURE_RCPARAMS if is_nature else _SCI_RCPARAMS)
+
+    if is_nature:
+        # Nature: square PCA plot (left) + group legend (right)
+        plot_side = float(config.get("pdf_nature_col_width", 3.5))  # square side (in)
+        legend_width = float(config.get("pdf_nature_legend_width", 2.2))
+        fig_height = plot_side + 0.6       # vertical space with margins
+        fig_width = plot_side + legend_width + 0.5  # horizontal space with margins
+
+        fig = plt.figure(figsize=(fig_width, fig_height), dpi=300)
+        # Plot: left, square
+        pw = plot_side / fig_width
+        ph = plot_side / fig_height
+        ax = fig.add_axes([0.10, 0.08, pw, ph])
+        # Legend: right, same height
+        lx = 0.10 + pw + 0.03
+        lw = 1.0 - lx - 0.03
+        legend_ax = fig.add_axes([lx, 0.08, lw, ph])
+        legend_ax.set_axis_off()
     else:
-        fig, ax = plt.subplots(
-            figsize=(
-                float(config.get("pdf_width_in", 8.0)),
-                float(config.get("pdf_height_in", 6.5)),
-            ),
-            dpi=300,
-        )
-        legend_ax = None
+        combine_legend = bool(config.get("pdf_combine_plot_and_legend", True))
+        if combine_legend:
+            fig = plt.figure(
+                figsize=(
+                    float(config.get("pdf_combined_width_in", 12.0)),
+                    float(config.get("pdf_combined_height_in", 14.2)),
+                ),
+                dpi=300,
+            )
+            grid = fig.add_gridspec(2, 1, height_ratios=[1.0, 1.28], hspace=0.16)
+            ax = fig.add_subplot(grid[0, 0])
+            legend_ax = fig.add_subplot(grid[1, 0])
+        else:
+            fig, ax = plt.subplots(
+                figsize=(
+                    float(config.get("pdf_width_in", 8.0)),
+                    float(config.get("pdf_height_in", 6.5)),
+                ),
+                dpi=300,
+            )
+            legend_ax = None
 
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
     ax.grid(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+
+    # Axis styling — Nature: only bottom and left spines
+    if is_nature:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["bottom"].set_linewidth(0.5)
+        ax.spines["left"].set_linewidth(0.5)
+        ax.tick_params(pad=2.5)
+    else:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
 
     # Density heatmap layer (under points)
     if config.get("modern_background", False):
@@ -195,12 +277,19 @@ def generate_publication_pdf_matplotlib(
     other_rows = [row for row in rows if not row["is_modern_background"] and not row["is_target"]]
     target_rows = [row for row in rows if row["is_target"]]
 
-    # Modern background
+    # ── Modern background ──────────────────────────────────────
     if modern_rows:
         modern_groups_in_data = sorted(set(row["group"] for row in modern_rows))
+        modern_alpha = float(config.get("modern_background_alpha", 0.55))
+        # For Nature style, background is even more subtle
+        if is_nature:
+            modern_alpha *= 0.45
         for mg in modern_groups_in_data:
             mg_rows = [row for row in modern_rows if row["group"] == mg]
-            mg_color = mg_rows[0].get("group_color", config.get("modern_background_color", "#6699CC"))
+            mg_color = mg_rows[0].get("group_color", config.get("modern_background_color", "#B0B8C4"))
+            # In Nature style, compute extra-muted per-group colour
+            if is_nature:
+                mg_color = _nature_modern_color(mg_color)
             ax.scatter(
                 [row["PC1"] for row in mg_rows],
                 [row["PC2"] for row in mg_rows],
@@ -210,80 +299,194 @@ def generate_publication_pdf_matplotlib(
                     * float(config.get("modern_background_size_multiplier", 0.75))
                 ),
                 c=mg_color,
-                alpha=float(config.get("modern_background_alpha", 0.22)),
+                alpha=modern_alpha,
                 marker="o",
                 linewidths=0,
                 rasterized=len(mg_rows) > 500,
                 zorder=1,
             )
 
-    # Non-modern, non-target
+        # Modern group text labels (if enabled)
+        if is_nature and config.get("modern_background_labels", False) and modern_rows:
+            for mg in modern_groups_in_data:
+                mg_rows = [row for row in modern_rows if row["group"] == mg]
+                if not mg_rows:
+                    continue
+                mg_color = mg_rows[0].get("group_color", "#999999")
+                muted_text_color = _nature_modern_color(mg_color)
+                mean_pc1 = sum(float(r["PC1"]) for r in mg_rows) / len(mg_rows)
+                mean_pc2 = sum(float(r["PC2"]) for r in mg_rows) / len(mg_rows)
+                ax.text(
+                    mean_pc1, mean_pc2, mg,
+                    fontsize=5.5, color=muted_text_color, alpha=0.8,
+                    weight="normal", ha="center", va="center",
+                    zorder=6,
+                )
+
+    # ── Non-modern, non-target (ancient groups) ─────────────────
     for pop in pop_order:
         subset = [row for row in other_rows if row["population"] == pop]
         if not subset:
             continue
         marker = MARKER_MAP.get(styles.population_symbols.get(pop, "circle"), "o")
         colors = [row["group_color"] for row in subset]
+        point_size_base = float(config.get("point_size", 5.0)) * 4.0
+        # Nature: slightly smaller points
+        if is_nature:
+            point_size_base *= 0.75
         ax.scatter(
             [row["PC1"] for row in subset],
             [row["PC2"] for row in subset],
-            s=float(config.get("point_size", 5.0)) * 4.0,
+            s=point_size_base,
             c=colors,
-            alpha=0.82,
+            alpha=0.85 if not is_nature else 0.78,
             marker=marker,
-            linewidths=0.25,
-            edgecolors="white",
+            linewidths=0.25 if is_nature else 0.25,
+            edgecolors="white" if not is_nature else "none",
             zorder=2,
         )
 
-    # Target samples
+    # ── Target samples ──────────────────────────────────────────
     texts = []
     if target_rows:
+        target_color = config.get("target_color", "#D81B60")
+        target_outline = config.get("target_outline_color", "black")
+        target_s = float(config.get("point_size", 5.0)) * 20.0 * float(config.get("target_size_multiplier", 1.8))
+        if is_nature:
+            target_s *= 1.2  # More prominent in Nature style
+            target_outline = "#222222"
         ax.scatter(
             [row["PC1"] for row in target_rows],
             [row["PC2"] for row in target_rows],
-            s=float(config.get("point_size", 5.0)) * 20.0 * float(config.get("target_size_multiplier", 1.8)),
-            c=[config.get("target_color", "#D81B60") for _ in target_rows],
+            s=target_s,
+            c=target_color,
             alpha=1.0,
             marker="*",
-            linewidths=0.9,
-            edgecolors=config.get("target_outline_color", "black"),
+            linewidths=0.9 if is_nature else 0.9,
+            edgecolors=target_outline,
             zorder=4,
         )
         if config.get("label_targets", True):
+            label_fontsize = int(config.get("target_label_fontsize", 8))
             for row in target_rows:
                 texts.append(
                     ax.text(
                         row["PC1"],
                         row["PC2"],
                         row["target_label"] or row["sample_id"],
-                        fontsize=8,
+                        fontsize=8 if not is_nature else 7,
                         weight="bold",
-                        color="black",
+                        color="black" if not is_nature else "#1a1a1a",
                         zorder=5,
                     )
                 )
             if HAS_ADJUSTTEXT:
-                adjust_text(texts, ax=ax, arrowprops=dict(arrowstyle="-", color="black", lw=0.4))
+                arrow_lw = 0.3 if is_nature else 0.4
+                try:
+                    adjust_text(
+                        texts, ax=ax,
+                        arrowprops=dict(arrowstyle="-", color="#555555" if is_nature else "black", lw=arrow_lw),
+                    )
+                except Exception:
+                    pass  # adjust_text may fail on some inputs
 
+    # ── Axis labels ─────────────────────────────────────────────
     from smartpca_viz.parser import explained_variance_labels
 
     x_label, y_label = explained_variance_labels(eigvals)
-    ax.set_xlabel(x_label, fontsize=10)
-    ax.set_ylabel(y_label, fontsize=10)
-    ax.tick_params(labelsize=8)
-    ax.set_title(f"{project}: PC1 vs PC2", fontsize=11, weight="bold")
+    if is_nature:
+        ax.set_xlabel(x_label, fontsize=9, labelpad=3)
+        ax.set_ylabel(y_label, fontsize=9, labelpad=3)
+        # Title: Nature papers don't put titles on figures (they're in captions)
+        # but keep a minimal one for the file
+        ax.set_title(f"{project}", fontsize=10, weight="bold", pad=6, loc="left")
+    else:
+        ax.set_xlabel(x_label, fontsize=10)
+        ax.set_ylabel(y_label, fontsize=10)
+        ax.tick_params(labelsize=8)
+        ax.set_title(f"{project}: PC1 vs PC2", fontsize=11, weight="bold")
 
-    if legend_ax is not None:
+    # ── Legend ──────────────────────────────────────────────────
+    if is_nature:
+        # Right panel: group names as colored dots
+        legend_ax.set_axis_off()
+        target_color = config.get("target_color", "#D81B60")
+
+        # Collect unique non-target groups from plot data
+        all_groups = []
+        for row in other_rows:
+            g = row.get("group", "Unknown")
+            if g not in all_groups:
+                all_groups.append(g)
+
+        # Add Target at the end
+        if target_rows:
+            all_groups.append("Target")
+
+        # Calculate spacing to avoid stacking
+        n_grp = len(all_groups)
+        n_cols = 1
+        grp_per_col = (n_grp + n_cols - 1) // n_cols
+        ry_step = min(0.050, 0.88 / (grp_per_col + 1))
+        for idx, gname in enumerate(all_groups):
+            col_idx = 0
+            row_idx = idx
+            cx = 0.02
+            ry = 0.95 - row_idx * ry_step
+
+            if gname == "Target":
+                gc = target_color
+                legend_ax.scatter(
+                    [cx + 0.03], [ry],
+                    s=28, c=gc, marker="*",
+                    transform=legend_ax.transAxes, clip_on=False,
+                    edgecolors=config.get("target_outline_color", "#222222"),
+                    linewidths=0.3, zorder=3,
+                )
+            else:
+                gc = styles.group_colors.get(gname, "#999999")
+                legend_ax.scatter(
+                    [cx + 0.03], [ry],
+                    s=16, c=gc, marker="o",
+                    transform=legend_ax.transAxes,
+                    clip_on=False, linewidths=0, zorder=3,
+                )
+            legend_ax.text(
+                cx + 0.08, ry, gname,
+                transform=legend_ax.transAxes,
+                fontsize=5.5, va="center", ha="left",
+            )
+    elif legend_ax is not None:
         draw_population_legend_axes(legend_ax, rows, group_order, pop_order, styles, config)
         fig.subplots_adjust(left=0.08, right=0.98, top=0.96, bottom=0.035, hspace=0.16)
     else:
+        # sci style without combined legend — place legend inside plot
+        used_groups = list(dict.fromkeys(r["group"] for r in other_rows))
+        handles, labels_list = [], []
+        for g in group_order:
+            if g in used_groups:
+                g_rows = [r for r in other_rows if r["group"] == g]
+                if g_rows:
+                    gc = g_rows[0]["group_color"]
+                    handles.append(plt.Line2D([0], [0], marker="o", color="w",
+                                              markerfacecolor=gc, markersize=5, linewidth=0))
+                    labels_list.append(g)
+        if target_rows:
+            handles.append(plt.Line2D([0], [0], marker="*", color="w",
+                                      markerfacecolor=target_color,
+                                      markeredgecolor="black",
+                                      markersize=7, linewidth=0))
+            labels_list.append("Target")
+        if handles:
+            ax.legend(handles, labels_list, loc="best", frameon=False, fontsize=6.5)
         fig.tight_layout()
 
+    # ── Save ────────────────────────────────────────────────────
     if png_path is not None:
-        fig.savefig(png_path, dpi=300, bbox_inches="tight")
+        fig.savefig(png_path, dpi=600 if is_nature else 300, bbox_inches="tight",
+                    facecolor="white", edgecolor="none")
     with PdfPages(path) as pdf_pages:
-        pdf_pages.savefig(fig, bbox_inches="tight")
+        pdf_pages.savefig(fig, dpi=600 if is_nature else 300)
     plt.close(fig)
     return True
 

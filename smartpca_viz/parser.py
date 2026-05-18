@@ -324,6 +324,34 @@ def parse_metadata_poplist(
             if not line:
                 continue
 
+            # Handle concatenated lines: "PopName====Group==== ..."
+            # This happens when a poplist file without trailing newline
+            # is concatenated with another file via `cat`.
+            if "====" in line:
+                parts = line.split("====")
+                # First part before ==== is a population name (if any)
+                first = parts[0].strip()
+                if first:
+                    population = first.split()[0]
+                    if population:
+                        if population in mapping and mapping[population] != current_group:
+                            warnings.append(
+                                f"[parser] Population {population!r} (line {line_no}) appears in "
+                                f"{mapping[population]!r} and {current_group!r}; keeping first"
+                            )
+                        elif population not in mapping:
+                            mapping[population] = current_group
+                            pop_order.append(population)
+                # Remaining parts contain ====headers====
+                for p in parts[1:]:
+                    p = p.strip()
+                    if p:
+                        header_count += 1
+                        current_group = p or "Unknown"
+                        if current_group not in group_order:
+                            group_order.append(current_group)
+                continue
+
             # Group header
             if line.startswith("====") and line.endswith("===="):
                 header_count += 1

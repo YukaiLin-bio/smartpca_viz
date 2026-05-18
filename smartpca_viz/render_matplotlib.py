@@ -329,13 +329,13 @@ def generate_publication_pdf_matplotlib(
 
         # Modern group text labels (if enabled)
         if is_nature and config.get("modern_background_labels", False) and modern_rows:
-            # Reuse the same muted color as background points
+            # Same muted base as background but slightly stronger for text readability
             muted_colors = {}
             for mg in modern_groups_in_data:
                 mg_rows_g = [row for row in modern_rows if row["group"] == mg]
                 if mg_rows_g:
                     gc = mg_rows_g[0].get("group_color", config.get("modern_background_color", "#B0B8C4"))
-                    muted_colors[mg] = _nature_modern_color(gc)
+                    muted_colors[mg] = palette_muted_color(gc, strength=0.6)
             for mg in modern_groups_in_data:
                 mg_rows = [row for row in modern_rows if row["group"] == mg]
                 if not mg_rows:

@@ -371,9 +371,11 @@ def generate_publication_pdf_matplotlib(
     if target_rows:
         target_color = config.get("target_color", "#D81B60")
         target_outline = config.get("target_outline_color", "black")
-        target_s = float(config.get("point_size", 5.0)) * 20.0 * float(config.get("target_size_multiplier", 1.8))
+        # Match HTML: radius = point_size * target_size_multiplier
+        # s = area of bounding box in points² = (2 * radius)²
+        target_r = float(config.get("point_size", 5.0)) * float(config.get("target_size_multiplier", 1.8))
+        target_s = (target_r * 2) ** 2
         if is_nature:
-            target_s *= 1.2  # More prominent in Nature style
             target_outline = "#222222"
         ax.scatter(
             [row["PC1"] for row in target_rows],
@@ -386,7 +388,7 @@ def generate_publication_pdf_matplotlib(
             edgecolors=target_outline if is_nature else "black",
             zorder=4,
         )
-        if config.get("label_targets", True):
+        if config.get("label_targets", True) and not is_nature:
             label_fontsize = int(config.get("target_label_fontsize", 8))
             for row in target_rows:
                 texts.append(

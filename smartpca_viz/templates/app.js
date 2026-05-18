@@ -295,7 +295,9 @@
       view: null,
       legendScale: 1,
       pointScale: 1,
-      labelMode: 'none'
+      labelMode: 'none',
+      showTargetLabels: !!(PAYLOAD.config && PAYLOAD.config.label_targets),
+      targetScale: 1
     };
 
     // Init UI
@@ -545,7 +547,7 @@
 
   PCAPlot.prototype._targetRadius = function () {
     return (this.p.config.point_size || 5) * this.state.pointScale
-      * (this.p.config.target_size_multiplier || 1.8);
+      * (this.p.config.target_size_multiplier || 1.8) * this.state.targetScale;
   };
 
   PCAPlot.prototype._pointLabel = function (p) {
@@ -676,7 +678,7 @@
       var m = self._marker(p, x, y, r);
       self._bindTooltip(m, p);
       self.svg.appendChild(m);
-      if (self.p.config.label_targets) {
+      if (self.state.showTargetLabels && self.p.config.label_targets) {
         var t = self._el('text', {
           x: x + 9, y: y - 9,
           'font-family': 'Arial,Helvetica,sans-serif',
@@ -1025,6 +1027,21 @@
       self.state.showDensity = !self.state.showDensity;
       self.draw();
     });
+
+    // ── Target label toggle ──
+    document.getElementById('toggleTargetLabels').onclick = self._safe(function () {
+      self.state.showTargetLabels = !self.state.showTargetLabels;
+      document.getElementById('toggleTargetLabels').style.opacity =
+        self.state.showTargetLabels ? '1' : '0.4';
+      self.draw();
+    });
+
+    // ── Target size slider ──
+    document.getElementById('targetScale').oninput = function (e) {
+      self.state.targetScale = (+e.target.value) / 100;
+      document.getElementById('targetScaleValue').textContent = e.target.value + '%';
+      self.draw();
+    };
 
     // ── Search (fuzzy match by sample_id, population, group) ──
     document.getElementById('searchBtn').onclick = self._safe(function () {

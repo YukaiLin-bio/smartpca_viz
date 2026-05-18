@@ -17,7 +17,13 @@
 <button id="resetView">Global view</button>
 <button id="toggleZoom">🔍 Zoom</button>
 <button id="toggleModern">Modern as background</button>
-<button id="toggleDensity">Density heatmap</button>
+    <button id="toggleDensity">Density heatmap</button>
+    <button id="toggleTargetLabels">🏷 Target labels</button>
+</div>
+<div class="scaleControl" id="targetScaleRow">
+  <label for="targetScale">Target size</label>
+  <input id="targetScale" type="range" min="50" max="300" value="100">
+  <span id="targetScaleValue">100%</span>
 </div>
 <div class="scaleControl" id="modernAlphaRow" style="display:none">
   <label for="modernAlpha">Modern alpha</label>

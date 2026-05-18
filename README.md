@@ -12,7 +12,6 @@
 - 🎯 **Target 标记**：星标高亮目标样本
 - 🌍 **Modern as background**：现代人群以 group 名称文字标记，低可视度颜色（HSL 降饱和提亮度），图例 `(bg)` 标注
 - 🔥 **Density heatmap**：KDE 密度热力图叠加
-- 🔍 **Zoom 模式**：框选放大，可连续缩放
 - 🎨 **颜色自定义**：color_by group/population，可配置所有参数
 
 ## 使用

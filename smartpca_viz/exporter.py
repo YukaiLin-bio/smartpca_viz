@@ -65,6 +65,20 @@ def write_readme(
         ]
     )
     lines.extend(f"- {key}: {value}" for key, value in config.items())
+    # Modern population label note
+    if config.get("modern_label_mode") == "population":
+        lines.extend([
+            "",
+            "Modern population label notes:",
+            "- The static figures (PDF/SVG) place one centroid-based label per modern",
+            "  population. Dense PCA regions may have local label overlap — this is",
+            "  an accepted visual design for broad population identification.",
+            "- For precise per-population lookup, use the interactive HTML: hover over",
+            "  points for tooltips, search by population name, or filter by population",
+            "  in the sidebar.",
+            "- Population label overlap in dense regions is a natural consequence of",
+            "  PCA projection; it does not indicate a data or analysis problem.",
+        ])
     lines.extend(
         [
             "",
@@ -93,8 +107,9 @@ def write_log(
     rows: list[dict[str, Any]],
     warnings: list[str],
     output_files: list[Path],
+    provenance: dict[str, Any] | None = None,
 ) -> None:
-    """Write run log with summary statistics."""
+    """Write run log with summary statistics and rendering provenance."""
     group_count = len(set(row["group"] for row in rows))
     pop_count = len(set(row["population"] for row in rows))
     target_count = sum(1 for row in rows if row["is_target"])
@@ -113,9 +128,27 @@ def write_log(
             f"Group count: {group_count}",
             f"Target count: {target_count}",
             f"Unknown group sample count: {unknown_count}",
-            "Warnings:",
         ]
     )
+    # Rendering provenance
+    if provenance:
+        lines.append("Rendering:")
+        for key in ["renderer", "fallback_reason", "matplotlib_version",
+                     "scipy_available", "adjusttext_available", "python_version",
+                     "publication_svg_path", "modern_label_mode",
+                     "modern_population_label_count"]:
+            val = provenance.get(key)
+            if val is not None:
+                lines.append(f"  {key}: {val}")
+        # Note about adjustText
+        if provenance.get("modern_label_mode") == "population":
+            if not provenance.get("adjusttext_available"):
+                lines.append("  [note] adjustText not installed; modern population labels are")
+                lines.append("         rendered as direct centroids. Dense PCA regions may have")
+                lines.append("         local label overlap — this is an accepted visual design.")
+    lines.extend([
+        "Warnings:",
+    ])
     if warnings:
         lines.extend(f"  WARNING: {message}" for message in warnings)
     else:

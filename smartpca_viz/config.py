@@ -48,6 +48,14 @@ def default_config() -> dict[str, Any]:
         "pdf_combine_plot_and_legend": True,
         "pdf_combined_width_in": 12.0,
         "pdf_combined_height_in": 14.2,
+        # Publication renderer contract
+        "publication_renderer": "matplotlib",
+        "publication_legend": "groups",
+        "modern_render_mode": "points",
+        "modern_centroid_labels": False,
+        "modern_label_mode": "none",
+        "publication_target_label": True,
+        "publication_output_svg": True,
     }
 
 
@@ -161,4 +169,24 @@ def validate_config(config: dict[str, Any]) -> list[str]:
         warnings.append("[config] target_size_multiplier must be a positive number")
     if not isinstance(config.get("modern_background_alpha"), (int, float)) or not (0 <= config["modern_background_alpha"] <= 1):
         warnings.append("[config] modern_background_alpha must be between 0 and 1")
+    # Renderer contract
+    if config.get("pdf_style") == "nature":
+        if config.get("publication_renderer") != "matplotlib":
+            warnings.append(
+                "[config] pdf_style 'nature' requires publication_renderer 'matplotlib'"
+            )
+    # Target shape validation
+    valid_target_shapes = {"star", "circle", "square", "triangle", "diamond"}
+    ts = config.get("target_shape")
+    if ts and ts not in valid_target_shapes:
+        warnings.append(
+            f"[config] target_shape must be one of {sorted(valid_target_shapes)}, got {ts!r}"
+        )
+    # Modern label mode validation
+    valid_label_modes = {"none", "population"}
+    lm = config.get("modern_label_mode", "none")
+    if lm not in valid_label_modes:
+        warnings.append(
+            f"[config] modern_label_mode must be one of {sorted(valid_label_modes)}, got {lm!r}"
+        )
     return warnings

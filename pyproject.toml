@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smartpca-viz"
+version = "2.0.0"
+description = "Publication-grade PDF/SVG and interactive HTML visualization for smartpca PC1/PC2 results"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.8",
+    "plotly>=5.0",
+    "PyYAML>=6.0",
+    "Jinja2>=3.1",
+    "reportlab>=4.0",
+    "adjustText>=1.0",
+]
+
+[project.scripts]
+smartpca-viz = "smartpca_viz.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["smartpca_viz*"]
+
+[tool.setuptools.package-data]
+smartpca_viz = ["templates/*.html", "templates/*.css", "templates/*.js"]

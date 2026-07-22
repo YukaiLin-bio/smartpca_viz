@@ -191,14 +191,38 @@ def generate_publication_pdf(
     eigvals: list[float],
     config: dict[str, Any],
     project: str,
-) -> None:
-    """Generate publication-quality PDF. Tries matplotlib first, falls back to SimplePDF."""
+) -> dict[str, Any]:
+    """Generate publication-quality PDF.
+
+    Returns a provenance dict with keys: renderer, fallback_reason.
+    For Nature style, only Matplotlib is accepted.
+    """
+    style = str(config.get("pdf_style", "sci")).lower()
+
+    # Nature style: Matplotlib only
+    if style == "nature":
+        if not generate_publication_pdf_matplotlib(
+            path, rows, group_order, pop_order, styles, eigvals, config, project
+        ):
+            raise RuntimeError(
+                "Nature publication output requires Matplotlib; no PDF was written"
+            )
+        return {"renderer": "matplotlib", "fallback_reason": None}
+
+    # Non-Nature: try Matplotlib, fall back to SimplePDF draft
     if generate_publication_pdf_matplotlib(
         path, rows, group_order, pop_order, styles, eigvals, config, project
     ):
-        return
+        return {"renderer": "matplotlib", "fallback_reason": None}
 
-    # Fallback: SimplePDF
+    # Draft-only fallback: SimplePDF (only when publication_renderer == "simplepdf-draft")
+    if config.get("publication_renderer") != "simplepdf-draft":
+        raise RuntimeError(
+            "Matplotlib unavailable and publication_renderer is not 'simplepdf-draft'; "
+            "no PDF was written"
+        )
+
+    # SimplePDF draft
     pdf = SimplePDF()
     width = float(config.get("pdf_width_in", 8.0)) * 72
     height = float(config.get("pdf_height_in", 6.5)) * 72
@@ -206,7 +230,8 @@ def generate_publication_pdf(
     pdf.color("#FFFFFF")
     pdf.rect(0, 0, width, height, True)
     pdf.color("#111111")
-    pdf.text(36, height - 32, f"{project}: PCA (PC1 vs PC2)", 12, True)
+    pdf.text(36, height - 32, "DRAFT — SimplePDF renderer", 10, True)
+    pdf.text(36, height - 48, f"{project}: PCA (PC1 vs PC2)", 12, True)
     x0, y0, w, h = 58, 58, width - 210, height - 118
     pdf.color("#111111")
     pdf.line(x0, y0, x0 + w, y0, 0.8)
@@ -290,10 +315,12 @@ def generate_report_pdf(
     output_files: list[Path],
     config: dict[str, Any],
     project: str,
+    provenance: dict[str, Any] | None = None,
 ) -> None:
     """Generate report PDF. Tries reportlab first, falls back to SimplePDF."""
     if generate_report_pdf_reportlab(
-        path, rows, group_order, pop_order, input_paths, output_files, config, project
+        path, rows, group_order, pop_order, input_paths, output_files, config, project,
+        provenance=provenance,
     ):
         return
 
@@ -391,6 +418,7 @@ def generate_report_pdf_reportlab(
     output_files: list[Path],
     config: dict[str, Any],
     project: str,
+    provenance: dict[str, Any] | None = None,
 ) -> bool:
     """Generate report PDF using reportlab. Returns True if successful."""
     global HAS_REPORTLAB  # noqa: PLW0602
@@ -501,6 +529,22 @@ def generate_report_pdf_reportlab(
         story.append(
             _reportlab_table(config_table, direct_imports, col_widths=[2.5 * inch, 3.8 * inch])
         )
+        story.append(Spacer(1, 0.18 * inch))
+        story.append(Paragraph("Rendering", styles["Heading2"]))
+        if provenance:
+            prov_table = [["Key", "Value"]]
+            for k in ["renderer", "fallback_reason", "matplotlib_version",
+                       "scipy_available", "adjusttext_available", "python_version",
+                       "publication_svg_path", "modern_label_mode",
+                       "modern_population_label_count"]:
+                v = provenance.get(k)
+                if v is not None:
+                    prov_table.append([k, str(v)])
+            story.append(
+                _reportlab_table(prov_table, direct_imports, col_widths=[2.5 * inch, 3.8 * inch])
+            )
+        else:
+            story.append(Paragraph("(no provenance recorded)", styles["BodyText"]))
         story.append(Spacer(1, 0.18 * inch))
         story.append(Paragraph("Output files", styles["Heading2"]))
         output_table = [["File"]] + [[str(out)] for out in output_files]

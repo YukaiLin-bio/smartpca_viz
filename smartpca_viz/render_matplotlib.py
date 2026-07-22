@@ -153,6 +153,7 @@ _NATURE_RCPARAMS = {
     "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
     "pdf.fonttype": 42,  # Type 42 (TrueType) — ensures text is searchable
     "ps.fonttype": 42,
+    "svg.fonttype": "none",  # Keep text as editable text elements
     "axes.linewidth": 0.5,        # Nature uses thin axes
     "axes.labelsize": 9,
     "axes.titlesize": 10,
@@ -209,6 +210,46 @@ except Exception:
 # ─── Publication PDF ─────────────────────────────────────────────
 
 
+def build_publication_legend(
+    rows: list[dict[str, Any]],
+    group_order: list[str],
+    styles: Any,
+    config: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build a group-level-only legend for the publication figure.
+
+    Returns one entry per observed, non-empty non-target group
+    plus a single Target entry if targets exist.
+    """
+    entries: list[dict[str, Any]] = []
+    observed_groups: set[str] = set()
+    for row in rows:
+        if not row.get("is_target"):
+            g = row.get("group", "Unknown")
+            if g and g != "Unknown":
+                observed_groups.add(g)
+
+    # Follow metadata order for groups
+    for gname in group_order:
+        if gname in observed_groups:
+            entries.append({
+                "kind": "group",
+                "name": gname,
+                "color": styles.group_colors.get(gname, "#999999"),
+            })
+
+    # Target entry
+    target_rows = [row for row in rows if row.get("is_target")]
+    if target_rows:
+        entries.append({
+            "kind": "target",
+            "name": "Target",
+            "color": config.get("target_color", "#D81B60"),
+        })
+
+    return entries
+
+
 def generate_publication_pdf_matplotlib(
     path: Path,
     rows: list[dict[str, Any]],
@@ -236,21 +277,103 @@ def generate_publication_pdf_matplotlib(
     plt.rcParams.update(_NATURE_RCPARAMS if is_nature else _SCI_RCPARAMS)
 
     if is_nature:
-        # Nature: square PCA plot (left) + group legend (right)
-        plot_side = float(config.get("pdf_nature_col_width", 3.5))  # square side (in)
-        legend_width = float(config.get("pdf_nature_legend_width", 2.2))
-        fig_height = plot_side + 0.6       # vertical space with margins
-        fig_width = plot_side + legend_width + 0.5  # horizontal space with margins
+        # ── Nature layout: build legend first, measure text, auto-column ──
+        legend_entries = build_publication_legend(rows, group_order, styles, config)
+        n_entries = len(legend_entries)
 
+        # Target font size for legend
+        legend_fontsize = 7.0
+
+        # Absolute layout dimensions (inches) — initial estimate for figure creation
+        top_margin      = 0.25
+        plot_side       = float(config.get("pdf_nature_col_width", 3.5))
+        x_axis_clearance = 0.45
+        legend_gap      = 0.15
+        entry_height    = 0.17
+        legend_pad      = 0.10
+        bottom_margin   = 0.20
+        fig_width       = max(7.0, plot_side + 0.8)
+
+        # Create a temporary figure+axes to measure text widths
+        fig = plt.figure(figsize=(fig_width, 6.0), dpi=300)
+        # Temporary legend_ax for text measurement
+        _tmp_ax = fig.add_axes([0.06, 0.04, 0.88, 0.2])
+        _tmp_ax.set_axis_off()
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+
+        # Measure each label width in display units (points)
+        marker_and_gap_pt = 18.0   # marker circle + gap between marker and text
+        col_safety_pt     = 14.0   # safety gap between columns
+        dpi = 300
+        label_widths_pt = []
+        for entry in legend_entries:
+            t = _tmp_ax.text(0, 0, entry["name"], fontsize=legend_fontsize,
+                             transform=_tmp_ax.transAxes)
+            bbox = t.get_window_extent(renderer=renderer)
+            # Convert display units to typographic points
+            label_widths_pt.append(bbox.width * 72.0 / dpi)
+            t.remove()
+        plt.close(fig)
+
+        # Available width in legend_ax (points): 0.88 * fig_width * 72
+        available_pt = 0.88 * fig_width * 72.0
+
+        # Greedy column packing: try n_cols from 5 down to 1
+        best_n_cols = 1
+        for try_cols in range(5, 0, -1):
+            epc = (n_entries + try_cols - 1) // try_cols if n_entries > 0 else 1
+            # Each column needs width for its longest label
+            col_needs = []
+            for ci in range(try_cols):
+                start = ci * epc
+                end = min(start + epc, n_entries)
+                if start < n_entries:
+                    col_needs.append(max(label_widths_pt[start:end]))
+            total_needed = sum(col_needs) + try_cols * (marker_and_gap_pt + col_safety_pt)
+            if total_needed <= available_pt:
+                best_n_cols = try_cols
+                break
+
+        n_legend_cols = best_n_cols
+        entries_per_col = (n_entries + n_legend_cols - 1) // n_legend_cols if n_entries > 0 else 1
+
+        # Compute per-column fractional widths proportional to longest label
+        col_fracs = []
+        for ci in range(n_legend_cols):
+            start = ci * entries_per_col
+            end = min(start + entries_per_col, n_entries)
+            if start < n_entries:
+                needed = max(label_widths_pt[start:end]) + marker_and_gap_pt + col_safety_pt
+            else:
+                needed = 0
+            col_fracs.append(needed / available_pt)
+
+        # Normalize to fit within 0.94 (legend_w) with 0.02 margin each side
+        total_frac = sum(col_fracs)
+        if total_frac > 0:
+            scale = 0.90 / total_frac  # leave 0.04 for left+right margins inside legend_ax
+            col_fracs = [f * scale for f in col_fracs]
+
+        legend_height_abs = max(0.6, entries_per_col * entry_height + legend_pad)
+        fig_height = top_margin + plot_side + x_axis_clearance + legend_gap + legend_height_abs + bottom_margin
+
+        # Create real figure
         fig = plt.figure(figsize=(fig_width, fig_height), dpi=300)
-        # Plot: left, square
-        pw = plot_side / fig_width
-        ph = plot_side / fig_height
-        ax = fig.add_axes([0.10, 0.08, pw, ph])
-        # Legend: right, same height
-        lx = 0.10 + pw + 0.03
-        lw = 1.0 - lx - 0.03
-        legend_ax = fig.add_axes([lx, 0.08, lw, ph])
+
+        # Plot axes (absolute → fractional)
+        plot_left   = 0.5 * (1.0 - plot_side / fig_width)
+        plot_bottom = (bottom_margin + legend_height_abs + legend_gap + x_axis_clearance) / fig_height
+        plot_w      = plot_side / fig_width
+        plot_h      = plot_side / fig_height
+        ax = fig.add_axes([plot_left, plot_bottom, plot_w, plot_h])
+
+        # Legend axes
+        legend_left   = 0.06
+        legend_bottom = bottom_margin / fig_height
+        legend_w      = 0.88
+        legend_h      = legend_height_abs / fig_height
+        legend_ax = fig.add_axes([legend_left, legend_bottom, legend_w, legend_h])
         legend_ax.set_axis_off()
     else:
         combine_legend = bool(config.get("pdf_combine_plot_and_legend", True))
@@ -349,7 +472,48 @@ def generate_publication_pdf_matplotlib(
                     zorder=6,
                 )
 
-    # ── Non-modern, non-target (ancient groups) ─────────────────
+        # Modern population centroid labels (if enabled)
+        label_mode = config.get("modern_label_mode", "none")
+        if is_nature and label_mode == "population" and modern_rows:
+            if not HAS_ADJUSTTEXT:
+                print(
+                    "WARNING: modern_label_mode=population requires adjustText; "
+                    "labels may overlap. Install: pip install adjustText",
+                    file=sys.stderr,
+                )
+            # Compute centroids per modern population
+            from collections import defaultdict as _dd
+            pop_centroids: dict[str, dict[str, float]] = {}
+            for row in modern_rows:
+                pop = row.get("population", "Unknown")
+                if pop not in pop_centroids:
+                    pop_centroids[pop] = {"sum_pc1": 0.0, "sum_pc2": 0.0, "n": 0, "color": row.get("group_color", "#999999")}
+                pop_centroids[pop]["sum_pc1"] += float(row["PC1"])
+                pop_centroids[pop]["sum_pc2"] += float(row["PC2"])
+                pop_centroids[pop]["n"] += 1
+
+            pop_label_objs = []
+            for pop_name, data in sorted(pop_centroids.items()):
+                cx = data["sum_pc1"] / data["n"]
+                cy = data["sum_pc2"] / data["n"]
+                muted = palette_muted_color(data["color"], strength=0.55)
+                pop_label_objs.append(
+                    ax.text(
+                        cx, cy, pop_name,
+                        fontsize=5.0, color=muted, alpha=0.78,
+                        weight="normal", ha="center", va="center",
+                        zorder=6,
+                    )
+                )
+            if HAS_ADJUSTTEXT and pop_label_objs:
+                try:
+                    adjust_text(
+                        pop_label_objs, ax=ax,
+                        arrowprops=dict(arrowstyle="-", color="#888888", lw=0.25),
+                        force_text=0.8, force_points=0.3,
+                    )
+                except Exception:
+                    pass
     for pop in pop_order:
         subset = [row for row in other_rows if row["population"] == pop]
         if not subset:
@@ -357,9 +521,10 @@ def generate_publication_pdf_matplotlib(
         marker = MARKER_MAP.get(styles.population_symbols.get(pop, "circle"), "o")
         colors = [row["group_color"] for row in subset]
         point_size_base = float(config.get("point_size", 5.0)) * 4.0
-        # Nature: slightly smaller points
+        # Nature: slightly smaller points, circles only (no population shapes)
         if is_nature:
             point_size_base *= 0.75
+            marker = "o"
         ax.scatter(
             [row["PC1"] for row in subset],
             [row["PC2"] for row in subset],
@@ -374,6 +539,7 @@ def generate_publication_pdf_matplotlib(
 
     # ── Target samples ──────────────────────────────────────────
     texts = []
+    target_label_texts = []
     if target_rows:
         target_color = config.get("target_color", "#D81B60")
         target_outline = config.get("target_outline_color", "black")
@@ -381,26 +547,31 @@ def generate_publication_pdf_matplotlib(
         if is_nature:
             target_s *= 1.2  # More prominent in Nature style
             target_outline = "#222222"
+        # Use configured target_shape, not hardcoded star
+        target_marker = MARKER_MAP.get(config.get("target_shape", "star"), "*")
         ax.scatter(
             [row["PC1"] for row in target_rows],
             [row["PC2"] for row in target_rows],
             s=target_s,
             c=target_color,
             alpha=1.0,
-            marker="*",
+            marker=target_marker,
             linewidths=0.9 if is_nature else 0.9,
             edgecolors=target_outline if is_nature else "black",
             zorder=4,
         )
-        if config.get("label_targets", True):
-            label_fontsize = int(config.get("target_label_fontsize", 8))
+        # Use publication_target_label in Nature mode, label_targets otherwise
+        show_label = config.get("publication_target_label", True) if is_nature else config.get("label_targets", True)
+        if show_label:
+            label_fontsize = int(config.get("target_label_fontsize", 12))
             for row in target_rows:
-                texts.append(
+                label_text = row.get("target_label") or row["sample_id"]
+                target_label_texts.append(
                     ax.text(
                         row["PC1"],
                         row["PC2"],
-                        row["target_label"] or row["sample_id"],
-                        fontsize=8 if not is_nature else 7,
+                        label_text,
+                        fontsize=label_fontsize if is_nature else 8,
                         weight="bold",
                         color="black" if not is_nature else "#1a1a1a",
                         zorder=5,
@@ -410,7 +581,7 @@ def generate_publication_pdf_matplotlib(
                 arrow_lw = 0.3 if is_nature else 0.4
                 try:
                     adjust_text(
-                        texts, ax=ax,
+                        target_label_texts, ax=ax,
                         arrowprops=dict(arrowstyle="-", color="#555555" if is_nature else "black", lw=arrow_lw),
                     )
                 except Exception:
@@ -423,9 +594,7 @@ def generate_publication_pdf_matplotlib(
     if is_nature:
         ax.set_xlabel(x_label, fontsize=9, labelpad=3)
         ax.set_ylabel(y_label, fontsize=9, labelpad=3)
-        # Title: Nature papers don't put titles on figures (they're in captions)
-        # but keep a minimal one for the file
-        ax.set_title(f"{project}", fontsize=10, weight="bold", pad=6, loc="left")
+        # Nature papers do not put titles on figures (they are in captions)
     else:
         ax.set_xlabel(x_label, fontsize=10)
         ax.set_ylabel(y_label, fontsize=10)
@@ -434,54 +603,51 @@ def generate_publication_pdf_matplotlib(
 
     # ── Legend ──────────────────────────────────────────────────
     if is_nature:
-        # Right panel: group names as colored dots
+        # Group-level-only legend below plot, multi-column with measured widths
         legend_ax.set_axis_off()
-        target_color = config.get("target_color", "#D81B60")
 
-        # Collect unique non-target groups from plot data
-        all_groups = []
-        for row in other_rows:
-            g = row.get("group", "Unknown")
-            if g not in all_groups:
-                all_groups.append(g)
+        if n_entries > 0:
+            # Compute cumulative column positions from col_fracs
+            col_x_positions = [0.02]  # start at 2% margin
+            for cf in col_fracs[:-1]:
+                col_x_positions.append(col_x_positions[-1] + cf)
 
-        # Add Target at the end
-        if target_rows:
-            all_groups.append("Target")
+            ry_step = 0.88 / (entries_per_col + 0.5)
 
-        # Calculate spacing to avoid stacking
-        n_grp = len(all_groups)
-        n_cols = 1
-        grp_per_col = (n_grp + n_cols - 1) // n_cols
-        ry_step = min(0.050, 0.88 / (grp_per_col + 1))
-        for idx, gname in enumerate(all_groups):
-            col_idx = 0
-            row_idx = idx
-            cx = 0.02
-            ry = 0.95 - row_idx * ry_step
+            target_marker = config.get("target_shape", "star")
+            target_color = config.get("target_color", "#D81B60")
+            target_outline = config.get("target_outline_color", "#222222")
+            target_matplotlib_marker = {
+                "star": "*", "circle": "o", "square": "s",
+                "triangle": "^", "diamond": "D",
+            }.get(target_marker, "*")
 
-            if gname == "Target":
-                gc = target_color
-                legend_ax.scatter(
-                    [cx + 0.03], [ry],
-                    s=28, c=gc, marker="*",
-                    transform=legend_ax.transAxes, clip_on=False,
-                    edgecolors=config.get("target_outline_color", "#222222"),
-                    linewidths=0.3, zorder=3,
-                )
-            else:
-                gc = styles.group_colors.get(gname, "#999999")
-                legend_ax.scatter(
-                    [cx + 0.03], [ry],
-                    s=16, c=gc, marker="o",
+            for idx, entry in enumerate(legend_entries):
+                col_idx = idx // entries_per_col
+                row_idx = idx % entries_per_col
+                cx = col_x_positions[col_idx]
+                ry = 0.94 - row_idx * ry_step
+
+                if entry["kind"] == "target":
+                    legend_ax.scatter(
+                        [cx + 0.015], [ry],
+                        s=24, c=entry["color"], marker=target_matplotlib_marker,
+                        transform=legend_ax.transAxes,
+                        edgecolors=target_outline,
+                        linewidths=0.3, zorder=3,
+                    )
+                else:
+                    legend_ax.scatter(
+                        [cx + 0.015], [ry],
+                        s=14, c=entry["color"], marker="o",
+                        transform=legend_ax.transAxes,
+                        linewidths=0, zorder=3,
+                    )
+                legend_ax.text(
+                    cx + 0.040, ry, entry["name"],
                     transform=legend_ax.transAxes,
-                    clip_on=False, linewidths=0, zorder=3,
+                    fontsize=legend_fontsize, va="center", ha="left",
                 )
-            legend_ax.text(
-                cx + 0.08, ry, gname,
-                transform=legend_ax.transAxes,
-                fontsize=5.5, va="center", ha="left",
-            )
     elif legend_ax is not None:
         draw_population_legend_axes(legend_ax, rows, group_order, pop_order, styles, config)
         fig.subplots_adjust(left=0.08, right=0.98, top=0.96, bottom=0.035, hspace=0.16)
@@ -513,6 +679,12 @@ def generate_publication_pdf_matplotlib(
                     facecolor="white", edgecolor="none")
     with PdfPages(path) as pdf_pages:
         pdf_pages.savefig(fig, dpi=600 if is_nature else 300)
+    # SVG export for editable vector graphics
+    if is_nature and config.get("publication_output_svg", True):
+        svg_path = path.with_suffix(".svg")
+        fig.savefig(svg_path, dpi=300, bbox_inches="tight",
+                    facecolor="white", edgecolor="none",
+                    format="svg")
     plt.close(fig)
     return True
 

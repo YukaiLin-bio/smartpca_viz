@@ -1,0 +1,10 @@
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.8
+plotly>=5.0
+PyYAML>=6.0
+Jinja2>=3.1
+reportlab>=4.0
+adjustText>=1.0
+pytest>=7.4
+build>=1.2

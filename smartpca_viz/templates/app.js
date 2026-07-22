@@ -297,7 +297,9 @@
       pointScale: 1,
       labelMode: 'none',
       showTargetLabels: !!(PAYLOAD.config && PAYLOAD.config.label_targets),
-      targetScale: 1
+      targetScale: 1,
+      modernLabelByPop: false,
+      showPopLabels: false
     };
 
     // Init UI
@@ -476,11 +478,17 @@
     return e;
   };
 
+  PCAPlot.prototype._shapeForPoint = function (p) {
+    if (p.is_target) return this.p.config.target_shape || 'star';
+    if (this.state.modernBackground && p.is_modern_background) return 'circle';
+    return p.symbol;
+  };
+
   PCAPlot.prototype._marker = function (p, x, y, r) {
     var c = this._color(p);
     var a = this._dim(p) ? 0.12 : this._alpha(p);
     var g = this._el('g', {});
-    var shape = p.is_target ? 'star' : p.symbol;
+    var shape = this._shapeForPoint(p);
     var attrs = {
       fill: c,
       stroke: p.is_target
@@ -632,7 +640,7 @@
 
     var self = this;
 
-    // Layer 1: Modern background text labels
+    // Layer 1: Modern background as points (not per-sample text)
     if (this.state.modernBackground) {
       this.p.points.forEach(function (p) {
         if (!p.is_modern_background || p.is_target) return;
@@ -640,19 +648,14 @@
         var x = self._sx(+p.PC1);
         var y = self._sy(+p.PC2);
         var r = self._pointRadius(p);
-        var t = self._el('text', {
-          x: x, y: y,
-          'text-anchor': 'middle', 'dominant-baseline': 'central',
-          'font-family': 'Arial,Helvetica,sans-serif',
-          'font-size': Math.max(11, Math.min(18, r * 0.8)),
-          fill: self._color(p),
-          opacity: self._alpha(p)
-        });
-        t.textContent = p.group;
-        self._bindTooltip(t, p);
-        self.svg.appendChild(t);
+        var m = self._marker(p, x, y, r);
+        self._bindTooltip(m, p);
+        self.svg.appendChild(m);
       });
     }
+
+    // Population centroid labels (one per modern population)
+    this._drawPopulationCentroidLabels();
 
     // Layer 2: Non-target, non-modern points
     this.p.points.forEach(function (p) {
@@ -722,8 +725,48 @@
   };
 
   /* ---------------------------------------------------------------
-     Legend rendering
+     Population centroid labels (one per modern population)
      --------------------------------------------------------------- */
+
+  PCAPlot.prototype._drawPopulationCentroidLabels = function () {
+    if (!this.state.modernBackground || !this.state.showPopLabels) return;
+    var self = this;
+    // Compute centroids per modern population
+    var centroids = {};
+    this.p.points.forEach(function (p) {
+      if (!p.is_modern_background || p.is_target) return;
+      if (!self._visible(p)) return;
+      var pop = p.population;
+      if (!centroids[pop]) {
+        centroids[pop] = { sumPC1: 0, sumPC2: 0, n: 0, color: p.group_color };
+      }
+      centroids[pop].sumPC1 += +p.PC1;
+      centroids[pop].sumPC2 += +p.PC2;
+      centroids[pop].n += 1;
+    });
+
+    Object.keys(centroids).sort().forEach(function (pop) {
+      var c = centroids[pop];
+      var cx = self._sx(c.sumPC1 / c.n);
+      var cy = self._sy(c.sumPC2 / c.n);
+      // Leader line from centroid to label position (offset slightly)
+      var lx = cx + 12, ly = cy - 8;
+      var line = self._el('line', {
+        x1: cx, y1: cy, x2: lx, y2: ly,
+        stroke: mutedColor(c.color), 'stroke-width': 0.4, opacity: 0.6
+      });
+      self.svg.appendChild(line);
+      var t = self._el('text', {
+        x: lx + 3, y: ly + 3,
+        'font-family': 'Arial,Helvetica,sans-serif',
+        'font-size': 10,
+        fill: mutedColor(c.color),
+        opacity: 0.82
+      });
+      t.textContent = pop;
+      self.svg.appendChild(t);
+    });
+  };
 
   PCAPlot.prototype._drawLegend = function () {
     var layer = document.getElementById('legend');
@@ -998,6 +1041,22 @@
       var row = document.getElementById('modernAlphaRow');
       row.style.display = self.state.modernBackground ? 'grid' : 'none';
       // Rebuild legend to reflect modern bg state
+      var legendLayer = document.getElementById('legend');
+      legendLayer.innerHTML = '';
+      legendLayer.dataset.ready = '';
+      self.draw();
+    });
+
+    // ── Toggle: Modern population labels ──
+    document.getElementById('toggleModernPopLabels').onclick = self._safe(function () {
+      self.state.showPopLabels = !self.state.showPopLabels;
+      document.getElementById('toggleModernPopLabels').style.opacity =
+        self.state.showPopLabels ? '1' : '0.4';
+      // If modern background is off, turn it on so labels are visible
+      if (!self.state.modernBackground) {
+        self.state.modernBackground = true;
+        document.getElementById('toggleModern').style.opacity = '1';
+      }
       var legendLayer = document.getElementById('legend');
       legendLayer.innerHTML = '';
       legendLayer.dataset.ready = '';
@@ -1425,21 +1484,16 @@
       } catch(e) {}
     }
 
-    // Modern background text
+    // Modern background as points (not text)
     if (this.state.modernBackground) {
       this.p.points.forEach(function (p) {
         if (!p.is_modern_background || p.is_target) return;
         if (!self._visible(p)) return;
         var x = self._sx(+p.PC1), y = self._sy(+p.PC2), r = self._pointRadius(p);
-        ctx.save();
-        ctx.globalAlpha = self._alpha(p);
-        ctx.fillStyle = self._color(p);
-        ctx.font = Math.max(11, Math.min(18, r * 0.8))
-          + 'px Arial,Helvetica,sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(p.group, x, y);
-        ctx.restore();
+        var shape = self._shapeForPoint(p);
+        drawCanvasMarker(ctx, shape, x, y, r,
+          self._color(p), self._color(p),
+          self._dim(p) ? 0.12 : self._alpha(p), true);
       });
     }
 
@@ -1460,7 +1514,7 @@
       if (!p.is_target) return;
       if (!self._visible(p)) return;
       var x = self._sx(+p.PC1), y = self._sy(+p.PC2), r = self._targetRadius();
-      drawCanvasMarker(ctx, 'star', x, y, r,
+      drawCanvasMarker(ctx, self._shapeForPoint(p), x, y, r,
         self.p.config.target_color || '#FFD400',
         self.p.config.target_outline_color || '#FF0000', 1, true);
       if (self.p.config.label_targets) {
@@ -1532,7 +1586,7 @@
         ? (PAYLOAD.config.target_color || '#FFD400')
         : color;
       drawCanvasMarker(ctx,
-        target ? (PAYLOAD.config.target_shape || 'star') : 'circle',
+        target ? (self.p.config.target_shape || 'star') : 'circle',
         14, 14, 5.5, markerColor,
         target ? (PAYLOAD.config.target_outline_color || '#FF0000') : color,
         1, true);

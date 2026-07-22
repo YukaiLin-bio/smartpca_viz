@@ -130,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
         config["modern_background_color"] = "#B0B8C4"
         config["modern_background_alpha"] = 0.45
         config["modern_background_size_multiplier"] = 2.5
+        config["modern_label_mode"] = "population"
+        config["publication_target_label"] = True
         info("No config file given; using publication-ready Nature defaults")
 
     # CLI overrides
@@ -208,6 +210,23 @@ def main(argv: list[str] | None = None) -> int:
     warnings.extend(target_warnings)
     info("Read target samples")
 
+    # ── Preflight renderer availability ──────────────────────
+    if config.get("pdf_style") == "nature":
+        from smartpca_viz.render_pdf import HAS_MATPLOTLIB
+        if not HAS_MATPLOTLIB:
+            print(
+                "ERROR: Nature publication output requires Matplotlib; no PDF was written",
+                file=sys.stderr,
+            )
+            return 1
+        if config.get("publication_renderer") != "matplotlib":
+            print(
+                "ERROR: Nature publication output requires Matplotlib; "
+                f"publication_renderer is {config.get('publication_renderer')!r}",
+                file=sys.stderr,
+            )
+            return 1
+
     # ── Process data ──────────────────────────────────────────
     project = resolve_project_prefix(args.project, targets)
     out_dir = args.out
@@ -244,10 +263,36 @@ def main(argv: list[str] | None = None) -> int:
     )
     info("Generated interactive HTML")
 
-    generate_publication_pdf(
+    render_result = generate_publication_pdf(
         output_files[1], merged, group_order, pop_order, styles, eigvals, config, project,
     )
-    info("Generated publication PDF")
+    info(f"Generated publication PDF (renderer: {render_result.get('renderer', 'unknown')})")
+
+    # Build provenance dict
+    from smartpca_viz.render_pdf import HAS_MATPLOTLIB
+    from smartpca_viz.render_matplotlib import HAS_SCIPY, HAS_ADJUSTTEXT
+    import sys as _sys
+    try:
+        import matplotlib as _mpl
+        _mpl_version = _mpl.__version__
+    except ImportError:
+        _mpl_version = None
+
+    provenance = {
+        "renderer": render_result.get("renderer", "unknown"),
+        "fallback_reason": render_result.get("fallback_reason"),
+        "matplotlib_version": _mpl_version,
+        "scipy_available": HAS_SCIPY,
+        "adjusttext_available": HAS_ADJUSTTEXT,
+        "python_version": _sys.version.split()[0],
+        "publication_svg_path": str(output_files[1].with_suffix(".svg"))
+            if config.get("pdf_style") == "nature" and config.get("publication_output_svg", True)
+            else None,
+        "modern_label_mode": config.get("modern_label_mode", "none"),
+        "modern_population_label_count": len(set(
+            row["population"] for row in merged if row.get("is_modern_background")
+        )),
+    }
 
     input_paths = {
         "evec": args.evec,
@@ -260,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     generate_report_pdf(
         output_files[2], output_files[1], merged, group_order, pop_order,
         input_paths, output_files, config, project,
+        provenance=provenance,
     )
     info("Generated report PDF")
 
@@ -270,7 +316,8 @@ def main(argv: list[str] | None = None) -> int:
     write_readme(output_files[5], project, command, config, output_files)
     info("Wrote README")
 
-    write_log(output_files[6], input_paths, out_dir, merged, warnings.messages, output_files)
+    write_log(output_files[6], input_paths, out_dir, merged, warnings.messages, output_files,
+              provenance=provenance)
     info("Wrote log")
 
     return 0
